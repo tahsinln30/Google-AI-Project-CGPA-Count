@@ -1,0 +1,6 @@
+{
+  "name": "CGPA Count",
+  "description": "Customizable CGPA and GPA Calculator supporting credit weightings, custom GPA scales, and grade maps for university students.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
