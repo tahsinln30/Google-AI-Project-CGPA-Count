@@ -44,6 +44,9 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -113,6 +116,7 @@ sealed interface ActiveDialog {
 @Composable
 fun GpaAppScreen(viewModel: GpaViewModel) {
     val state by viewModel.uiState.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
     var activeDialog by remember { mutableStateOf<ActiveDialog>(ActiveDialog.None) }
 
     // Navigation and Status bars margins in Compose
@@ -144,6 +148,21 @@ fun GpaAppScreen(viewModel: GpaViewModel) {
                         Icon(
                             imageVector = Icons.Filled.Star,
                             contentDescription = "GPA Scales Configurations",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            val nextMode = if (themeMode == "dark") "light" else "dark"
+                            viewModel.setThemeMode(nextMode)
+                        },
+                        modifier = Modifier.testTag("theme_toggle_button")
+                    ) {
+                        val icon = if (themeMode == "dark") Icons.Filled.LightMode else Icons.Filled.DarkMode
+                        val contentDescription = if (themeMode == "dark") "Switch to Light Mode" else "Switch to Dark Mode"
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = contentDescription,
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -323,8 +342,10 @@ fun GpaAppScreen(viewModel: GpaViewModel) {
         is ActiveDialog.AppSettings -> {
             AppSettingsDialog(
                 cgpaMethod = state.cgpaMethod,
+                themeMode = themeMode,
                 onDismiss = { activeDialog = ActiveDialog.None },
-                onMethodChange = { viewModel.setCgpaMethod(it) }
+                onMethodChange = { viewModel.setCgpaMethod(it) },
+                onThemeChange = { viewModel.setThemeMode(it) }
             )
         }
     }
@@ -1415,8 +1436,10 @@ data class GradeEntryModel(
 @Composable
 fun AppSettingsDialog(
     cgpaMethod: String,
+    themeMode: String,
     onDismiss: () -> Unit,
-    onMethodChange: (String) -> Unit
+    onMethodChange: (String) -> Unit,
+    onThemeChange: (String) -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1424,10 +1447,75 @@ fun AppSettingsDialog(
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "You can customize how the overall Cumulative CGPA is synthesized from courses and semesters.",
+                    "You can customize how the display theme and Cumulative CGPA are configured.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text("Display Theme Style:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onThemeChange("system") }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = themeMode == "system",
+                                onClick = { onThemeChange("system") },
+                                modifier = Modifier.testTag("theme_system_radio")
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("System Default", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                        }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onThemeChange("light") }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = themeMode == "light",
+                                onClick = { onThemeChange("light") },
+                                modifier = Modifier.testTag("theme_light_radio")
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("White Mode", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                        }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onThemeChange("dark") }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = themeMode == "dark",
+                                onClick = { onThemeChange("dark") },
+                                modifier = Modifier.testTag("theme_dark_radio")
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Dark Mode", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text("CGPA Synthesis Formula Mode:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)

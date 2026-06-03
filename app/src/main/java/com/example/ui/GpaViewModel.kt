@@ -184,6 +184,19 @@ class GpaViewModel(private val repository: AppRepository) : ViewModel() {
         }
     }
 
+    val themeMode: StateFlow<String> = repository.getSettingFlow("theme_mode", "system")
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = "system"
+        )
+
+    fun setThemeMode(mode: String) {
+        viewModelScope.launch {
+            repository.saveSetting("theme_mode", mode)
+        }
+    }
+
     class Factory(private val repository: AppRepository) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(GpaViewModel::class.java)) {

@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -52,7 +53,13 @@ class MainActivity : ComponentActivity() {
             val viewModel = ViewModelProvider(this, factory)[GpaViewModel::class.java]
 
             setContent {
-                MyApplicationTheme {
+                val themeMode by viewModel.themeMode.collectAsState()
+                val isDarkTheme = when (themeMode) {
+                    "dark" -> true
+                    "light" -> false
+                    else -> isSystemInDarkTheme()
+                }
+                MyApplicationTheme(darkTheme = isDarkTheme) {
                     val error = crashError
                     if (error != null) {
                         CrashScreen(error = error)
