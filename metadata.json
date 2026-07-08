@@ -1,0 +1,6 @@
+{
+  "name": "CGPA Count",
+  "description": "Calculate and track semesters, courses, and CGPA with university level grading or custom grading systems, developer info, dark mode, and settings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
