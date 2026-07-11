@@ -83,6 +83,12 @@ class AcademicViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updateSemester(semester: Semester) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateSemester(semester)
+        }
+    }
+
     fun deleteSemester(semester: Semester) {
         viewModelScope.launch(Dispatchers.IO) {
             if (_selectedSemesterId.value == semester.id) {

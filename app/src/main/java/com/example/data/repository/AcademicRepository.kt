@@ -40,7 +40,8 @@ class AcademicRepository(private val dao: AcademicDao) {
     }
 
     suspend fun insertSemester(semester: Semester): Long = dao.insertSemester(semester)
-    suspend fun deleteSemester(semester: Semester) = dao.deleteSemester(semester)
+    suspend fun updateSemester(semester: Semester) = dao.updateSemester(semester)
+    suspend fun deleteSemester(semester: Semester) = dao.deleteSemesterAndCourses(semester)
 
     fun getCoursesForSemester(semesterId: Long): Flow<List<Course>> = dao.getCoursesForSemesterFlow(semesterId)
     suspend fun insertCourse(course: Course) = dao.insertCourse(course)

@@ -39,6 +39,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import com.example.R
 import com.example.data.AppDatabase
 import com.example.data.entity.Course
@@ -59,6 +63,42 @@ sealed class AppScreen {
     object PrivacyPolicy : AppScreen()
 }
 
+fun recalculateCourseGrade(course: Course, activeRanges: List<GradeRange>): Course {
+    if (activeRanges.isEmpty()) return course
+
+    // 1. Try to find exact match
+    val exactMatch = activeRanges.firstOrNull { it.grade.equals(course.grade, ignoreCase = true) }
+    if (exactMatch != null) {
+        return course.copy(grade = exactMatch.grade, gradePoint = exactMatch.gradePoint)
+    }
+
+    // 2. Suffix stripping (e.g., "A+" -> "A", "B-" -> "B")
+    if (course.grade.length > 1) {
+        val stripped = course.grade.filter { it.isLetter() }
+        val strippedMatch = activeRanges.firstOrNull { it.grade.equals(stripped, ignoreCase = true) }
+        if (strippedMatch != null) {
+            return course.copy(grade = strippedMatch.grade, gradePoint = strippedMatch.gradePoint)
+        }
+    }
+
+    // 3. First letter match (e.g., if course grade is "A" but system only has "A+" and "A-", find first matching starting letter)
+    val firstChar = course.grade.firstOrNull()
+    if (firstChar != null && firstChar.isLetter()) {
+        val letterMatch = activeRanges.firstOrNull { it.grade.startsWith(firstChar.toString(), ignoreCase = true) }
+        if (letterMatch != null) {
+            return course.copy(grade = letterMatch.grade, gradePoint = letterMatch.gradePoint)
+        }
+    }
+
+    // 4. Default fallback: find the grade with the closest gradePoint
+    val closestMatch = activeRanges.minByOrNull { Math.abs(it.gradePoint - course.gradePoint) }
+    if (closestMatch != null) {
+        return course.copy(grade = closestMatch.grade, gradePoint = closestMatch.gradePoint)
+    }
+
+    return course
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppContainer(
@@ -75,12 +115,20 @@ fun MainAppContainer(
     val selectedSemesterId by viewModel.selectedSemesterId.collectAsState()
     val selectedSemesterCourses by viewModel.selectedSemesterCourses.collectAsState()
 
+    val recalculatedAllCourses = remember(allCourses, activeGradeRanges) {
+        allCourses.map { recalculateCourseGrade(it, activeGradeRanges) }
+    }
+    val recalculatedSelectedCourses = remember(selectedSemesterCourses, activeGradeRanges) {
+        selectedSemesterCourses.map { recalculateCourseGrade(it, activeGradeRanges) }
+    }
+
     val activeSemester = semesters.find { it.id == selectedSemesterId }
+    val isWide = LocalConfiguration.current.screenWidthDp >= 600
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         bottomBar = {
-            if (currentScreen != AppScreen.SemesterDetail) {
+            if (!isWide && currentScreen != AppScreen.SemesterDetail) {
                 NavigationBar(
                     modifier = Modifier.testTag("app_navigation_bar"),
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -89,118 +137,171 @@ fun MainAppContainer(
                         selected = currentScreen == AppScreen.Dashboard,
                         onClick = { currentScreen = AppScreen.Dashboard },
                         icon = { Icon(Icons.Default.Dashboard, contentDescription = "Dashboard") },
-                        label = { Text("Dashboard") },
+                        label = { Text("Dashboard", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
                         modifier = Modifier.testTag("nav_dashboard")
                     )
                     NavigationBarItem(
                         selected = currentScreen == AppScreen.GradingScaleManager,
                         onClick = { currentScreen = AppScreen.GradingScaleManager },
                         icon = { Icon(Icons.Default.Grading, contentDescription = "Grading Scales") },
-                        label = { Text("Scales") },
+                        label = { Text("Scales", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
                         modifier = Modifier.testTag("nav_scales")
                     )
                     NavigationBarItem(
                         selected = currentScreen == AppScreen.Settings,
                         onClick = { currentScreen = AppScreen.Settings },
                         icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") },
+                        label = { Text("Settings", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
                         modifier = Modifier.testTag("nav_settings")
                     )
                     NavigationBarItem(
                         selected = currentScreen == AppScreen.PrivacyPolicy,
                         onClick = { currentScreen = AppScreen.PrivacyPolicy },
                         icon = { Icon(Icons.Default.Security, contentDescription = "Privacy & Developer") },
-                        label = { Text("Privacy") },
+                        label = { Text("Privacy", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
                         modifier = Modifier.testTag("nav_privacy")
                     )
                 }
             }
         }
     ) { innerPadding ->
-        Box(
+        Row(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
-            when (currentScreen) {
-                is AppScreen.Dashboard -> {
-                    DashboardScreen(
-                        semesters = semesters,
-                        allCourses = allCourses,
-                        activeGradingSystem = activeGradingSystem,
-                        activeGradeRanges = activeGradeRanges,
-                        onAddSemester = { name -> viewModel.addSemester(name) },
-                        onDeleteSemester = { sem -> viewModel.deleteSemester(sem) },
-                        onSelectSemester = { id ->
-                            viewModel.selectSemester(id)
-                            currentScreen = AppScreen.SemesterDetail
-                        }
+            if (isWide && currentScreen != AppScreen.SemesterDetail) {
+                NavigationRail(
+                    modifier = Modifier.testTag("app_navigation_rail"),
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    NavigationRailItem(
+                        selected = currentScreen == AppScreen.Dashboard,
+                        onClick = { currentScreen = AppScreen.Dashboard },
+                        icon = { Icon(Icons.Default.Dashboard, contentDescription = "Dashboard") },
+                        label = { Text("Dashboard", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                        modifier = Modifier.testTag("nav_dashboard")
+                    )
+                    NavigationRailItem(
+                        selected = currentScreen == AppScreen.GradingScaleManager,
+                        onClick = { currentScreen = AppScreen.GradingScaleManager },
+                        icon = { Icon(Icons.Default.Grading, contentDescription = "Grading Scales") },
+                        label = { Text("Scales", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                        modifier = Modifier.testTag("nav_scales")
+                    )
+                    NavigationRailItem(
+                        selected = currentScreen == AppScreen.Settings,
+                        onClick = { currentScreen = AppScreen.Settings },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                        label = { Text("Settings", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                        modifier = Modifier.testTag("nav_settings")
+                    )
+                    NavigationRailItem(
+                        selected = currentScreen == AppScreen.PrivacyPolicy,
+                        onClick = { currentScreen = AppScreen.PrivacyPolicy },
+                        icon = { Icon(Icons.Default.Security, contentDescription = "Privacy & Developer") },
+                        label = { Text("Privacy", style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                        modifier = Modifier.testTag("nav_privacy")
                     )
                 }
-                is AppScreen.SemesterDetail -> {
-                    BackHandler {
-                        viewModel.selectSemester(null)
-                        currentScreen = AppScreen.Dashboard
-                    }
-                    if (activeSemester != null) {
-                        SemesterDetailScreen(
-                            semester = activeSemester,
-                            courses = selectedSemesterCourses,
-                            activeGradingSystem = activeGradingSystem,
-                            activeGradeRanges = activeGradeRanges,
-                            onBack = {
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize(),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (isWide) Modifier.widthIn(max = 800.dp) else Modifier
+                        )
+                ) {
+                    when (currentScreen) {
+                        is AppScreen.Dashboard -> {
+                            DashboardScreen(
+                                semesters = semesters,
+                                allCourses = recalculatedAllCourses,
+                                activeGradingSystem = activeGradingSystem,
+                                activeGradeRanges = activeGradeRanges,
+                                onAddSemester = { name -> viewModel.addSemester(name) },
+                                onUpdateSemester = { sem -> viewModel.updateSemester(sem) },
+                                onDeleteSemester = { sem -> viewModel.deleteSemester(sem) },
+                                onSelectSemester = { id ->
+                                    viewModel.selectSemester(id)
+                                    currentScreen = AppScreen.SemesterDetail
+                                }
+                            )
+                        }
+                        is AppScreen.SemesterDetail -> {
+                            BackHandler {
                                 viewModel.selectSemester(null)
                                 currentScreen = AppScreen.Dashboard
-                            },
-                            onAddCourse = { name, credits, score, grade, gpa ->
-                                viewModel.addCourse(name, credits, score, grade, gpa)
-                            },
-                            onDeleteCourse = { course ->
-                                viewModel.deleteCourse(course)
-                            },
-                            viewModel = viewModel
-                        )
-                    } else {
-                        currentScreen = AppScreen.Dashboard
-                    }
-                }
-                is AppScreen.GradingScaleManager -> {
-                    val sortedGradingSystems = remember(gradingSystems) {
-                        gradingSystems.sortedWith(compareBy<GradingSystem> { system ->
-                            if (system.isSystemBuiltIn) {
-                                when {
-                                    system.name.contains("University", ignoreCase = true) -> 1
-                                    system.name.contains("College", ignoreCase = true) -> 2
-                                    system.name.contains("School", ignoreCase = true) -> 3
-                                    else -> 4
-                                }
-                            } else {
-                                5
                             }
-                        }.thenBy { it.id })
+                            if (activeSemester != null) {
+                                SemesterDetailScreen(
+                                    semester = activeSemester,
+                                    courses = recalculatedSelectedCourses,
+                                    activeGradingSystem = activeGradingSystem,
+                                    activeGradeRanges = activeGradeRanges,
+                                    onBack = {
+                                        viewModel.selectSemester(null)
+                                        currentScreen = AppScreen.Dashboard
+                                    },
+                                    onAddCourse = { name, credits, score, grade, gpa ->
+                                        viewModel.addCourse(name, credits, score, grade, gpa)
+                                    },
+                                    onDeleteCourse = { course ->
+                                        viewModel.deleteCourse(course)
+                                    },
+                                    viewModel = viewModel
+                                )
+                            } else {
+                                currentScreen = AppScreen.Dashboard
+                            }
+                        }
+                        is AppScreen.GradingScaleManager -> {
+                            val sortedGradingSystems = remember(gradingSystems) {
+                                gradingSystems.sortedWith(compareBy<GradingSystem> { system ->
+                                    if (system.isSystemBuiltIn) {
+                                        when {
+                                            system.name.contains("University", ignoreCase = true) -> 1
+                                            system.name.contains("College", ignoreCase = true) -> 2
+                                            system.name.contains("School", ignoreCase = true) -> 3
+                                            else -> 4
+                                        }
+                                    } else {
+                                        5
+                                    }
+                                }.thenBy { it.id })
+                            }
+                            GradingScaleManagerScreen(
+                                gradingSystems = sortedGradingSystems,
+                                activeGradingSystem = activeGradingSystem,
+                                onSelectActive = { id -> viewModel.selectActiveGradingSystem(id) },
+                                onCreateCustomSystem = { name, ranges ->
+                                    viewModel.createCustomGradingSystem(name, ranges)
+                                },
+                                onDeleteCustomSystem = { system ->
+                                    viewModel.deleteCustomGradingSystem(system)
+                                },
+                                viewModel = viewModel
+                            )
+                        }
+                        is AppScreen.Settings -> {
+                            SettingsScreen(
+                                viewModel = viewModel,
+                                semesters = semesters,
+                                courses = allCourses
+                            )
+                        }
+                        is AppScreen.PrivacyPolicy -> {
+                            PrivacyPolicyScreen()
+                        }
                     }
-                    GradingScaleManagerScreen(
-                        gradingSystems = sortedGradingSystems,
-                        activeGradingSystem = activeGradingSystem,
-                        onSelectActive = { id -> viewModel.selectActiveGradingSystem(id) },
-                        onCreateCustomSystem = { name, ranges ->
-                            viewModel.createCustomGradingSystem(name, ranges)
-                        },
-                        onDeleteCustomSystem = { system ->
-                            viewModel.deleteCustomGradingSystem(system)
-                        },
-                        viewModel = viewModel
-                    )
-                }
-                is AppScreen.Settings -> {
-                    SettingsScreen(
-                        viewModel = viewModel,
-                        semesters = semesters,
-                        courses = allCourses
-                    )
-                }
-                is AppScreen.PrivacyPolicy -> {
-                    PrivacyPolicyScreen()
                 }
             }
         }
@@ -214,10 +315,12 @@ fun DashboardScreen(
     activeGradingSystem: GradingSystem?,
     activeGradeRanges: List<GradeRange>,
     onAddSemester: (String) -> Unit,
+    onUpdateSemester: (Semester) -> Unit,
     onDeleteSemester: (Semester) -> Unit,
     onSelectSemester: (Long) -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
+    var semesterToEdit by remember { mutableStateOf<Semester?>(null) }
 
     // Calculate Cumulative CGPA
     val totalCredits = allCourses.sumOf { it.credits }
@@ -509,6 +612,17 @@ fun DashboardScreen(
                                 }
 
                                 IconButton(
+                                    onClick = { semesterToEdit = semester },
+                                    modifier = Modifier.testTag("edit_semester_${semester.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit Semester",
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                    )
+                                }
+
+                                IconButton(
                                     onClick = { onDeleteSemester(semester) },
                                     modifier = Modifier.testTag("delete_semester_${semester.id}")
                                 ) {
@@ -593,6 +707,62 @@ fun DashboardScreen(
             }
         )
     }
+
+    if (semesterToEdit != null) {
+        var name by remember(semesterToEdit) { mutableStateOf(semesterToEdit!!.name) }
+        var errorText by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { semesterToEdit = null },
+            title = { Text("Edit Semester") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it
+                            errorText = ""
+                        },
+                        label = { Text("Semester Name") },
+                        placeholder = { Text("e.g. Fall 2026, Year 1 Term 2") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("edit_semester_name_input"),
+                        isError = errorText.isNotEmpty()
+                    )
+                    if (errorText.isNotEmpty()) {
+                        Text(
+                            text = errorText,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (name.trim().isEmpty()) {
+                            errorText = "Please enter a semester name"
+                        } else {
+                            onUpdateSemester(semesterToEdit!!.copy(name = name.trim()))
+                            semesterToEdit = null
+                        }
+                    },
+                    modifier = Modifier.testTag("dialog_confirm_edit_semester")
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { semesterToEdit = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -608,6 +778,7 @@ fun SemesterDetailScreen(
     viewModel: AcademicViewModel
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
+    var courseToEdit by remember { mutableStateOf<Course?>(null) }
 
     // Calculate Semester GPA
     val semCredits = courses.sumOf { it.credits }
@@ -811,6 +982,17 @@ fun SemesterDetailScreen(
                                     }
 
                                     IconButton(
+                                        onClick = { courseToEdit = course },
+                                        modifier = Modifier.testTag("edit_course_${course.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "Edit Course",
+                                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                        )
+                                    }
+
+                                    IconButton(
                                         onClick = { onDeleteCourse(course) },
                                         modifier = Modifier.testTag("delete_course_${course.id}")
                                     ) {
@@ -850,6 +1032,28 @@ fun SemesterDetailScreen(
             onConfirm = { name, credits, score, grade, gradePoint ->
                 onAddCourse(name, credits, score, grade, gradePoint)
                 showAddDialog = false
+            }
+        )
+    }
+
+    if (courseToEdit != null) {
+        EditCourseDialog(
+            course = courseToEdit!!,
+            activeGradingSystem = activeGradingSystem,
+            activeGradeRanges = activeGradeRanges,
+            viewModel = viewModel,
+            onDismiss = { courseToEdit = null },
+            onConfirm = { name, credits, score, grade, gradePoint ->
+                viewModel.updateCourse(
+                    courseToEdit!!.copy(
+                        name = name,
+                        credits = credits,
+                        score = score,
+                        grade = grade,
+                        gradePoint = gradePoint
+                    )
+                )
+                courseToEdit = null
             }
         )
     }
@@ -1018,6 +1222,174 @@ fun AddCourseDialog(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditCourseDialog(
+    course: Course,
+    activeGradingSystem: GradingSystem?,
+    activeGradeRanges: List<GradeRange>,
+    viewModel: AcademicViewModel,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Double, Int?, String, Double) -> Unit
+) {
+    var name by remember(course) { mutableStateOf(course.name) }
+    var creditsText by remember(course) { mutableStateOf(String.format(Locale.US, "%.1f", course.credits)) }
+
+    // Direct selection of grade range index
+    var selectedRangeIndex by remember(course, activeGradeRanges) {
+        mutableStateOf(
+            activeGradeRanges.indexOfFirst { it.grade == course.grade }.coerceAtLeast(0)
+        )
+    }
+    var dropdownExpanded by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf("") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+                .testTag("edit_course_dialog"),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Edit Course",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Course Title / Code") },
+                    placeholder = { Text("e.g. CSE-101, Calculus") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_course_name_input")
+                )
+
+                OutlinedTextField(
+                    value = creditsText,
+                    onValueChange = { creditsText = it },
+                    label = { Text("Course Credits") },
+                    placeholder = { Text("e.g. 3.0, 4.0, 1.5") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_course_credits_input")
+                )
+
+                if (activeGradeRanges.isNotEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        ExposedDropdownMenuBox(
+                            expanded = dropdownExpanded,
+                            onExpandedChange = { dropdownExpanded = !dropdownExpanded }
+                        ) {
+                            val selectedRange = activeGradeRanges.getOrNull(selectedRangeIndex)
+                            OutlinedTextField(
+                                value = selectedRange?.let { "${it.grade} (GP: ${String.format(Locale.US, "%.2f", it.gradePoint)})" } ?: "Select Grade",
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Select Grade Option") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                                    .testTag("edit_course_grade_dropdown_trigger")
+                            )
+                            ExposedDropdownMenu(
+                                expanded = dropdownExpanded,
+                                onDismissRequest = { dropdownExpanded = false }
+                            ) {
+                                activeGradeRanges.forEachIndexed { index, range ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = "${range.grade}  (GP: ${String.format(Locale.US, "%.2f", range.gradePoint)})",
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                            )
+                                        },
+                                        onClick = {
+                                            selectedRangeIndex = index
+                                            dropdownExpanded = false
+                                        },
+                                        modifier = Modifier.testTag("edit_grade_option_${range.grade}")
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "No grade options found. Please configure a scale in Scales.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                if (errorMsg.isNotEmpty()) {
+                    Text(
+                        text = errorMsg,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val nameTrim = name.trim()
+                            val creditsVal = creditsText.toDoubleOrNull()
+
+                            if (nameTrim.isEmpty()) {
+                                errorMsg = "Course title is required"
+                                return@Button
+                            }
+                            if (creditsVal == null || creditsVal <= 0.0) {
+                                errorMsg = "Valid course credits are required"
+                                return@Button
+                            }
+
+                            val selectedRange = activeGradeRanges.getOrNull(selectedRangeIndex)
+                            if (selectedRange == null) {
+                                errorMsg = "Invalid grade selection"
+                                return@Button
+                            }
+                            onConfirm(
+                                nameTrim,
+                                creditsVal,
+                                null,
+                                selectedRange.grade,
+                                selectedRange.gradePoint
+                            )
+                        },
+                        modifier = Modifier.testTag("dialog_confirm_edit_course")
+                    ) {
+                        Text("Save")
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun GradingScaleManagerScreen(
     gradingSystems: List<GradingSystem>,
@@ -1147,28 +1519,31 @@ fun GradingScaleManagerScreen(
                                     )
                                 }
 
-                                if (!system.isSystemBuiltIn) {
-                                    IconButton(
-                                        onClick = { editingSystem = system },
-                                        modifier = Modifier.testTag("edit_scale_${system.id}")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Edit,
-                                            contentDescription = "Edit Scale",
-                                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-                                        )
-                                    }
+                                 IconButton(
+                                    onClick = { editingSystem = system },
+                                    modifier = Modifier.testTag("edit_scale_${system.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit Scale",
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                    )
+                                }
 
-                                    IconButton(
-                                        onClick = { onDeleteCustomSystem(system) },
-                                        modifier = Modifier.testTag("delete_scale_${system.id}")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete Scale",
-                                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                                        )
-                                    }
+                                IconButton(
+                                    onClick = { onDeleteCustomSystem(system) },
+                                    enabled = !isActive,
+                                    modifier = Modifier.testTag("delete_scale_${system.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete Scale",
+                                        tint = if (isActive) {
+                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                        } else {
+                                            MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -1215,12 +1590,15 @@ fun ScaleRangesPreview(systemId: Long, viewModel: AcademicViewModel) {
         Spacer(modifier = Modifier.height(12.dp))
         Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
         Spacer(modifier = Modifier.height(8.dp))
-        // Show compact row list
+        // Show compact scrollable row list
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            ranges.take(6).forEach { range ->
+            ranges.forEach { range ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                     shape = RoundedCornerShape(8.dp)
@@ -1241,14 +1619,6 @@ fun ScaleRangesPreview(systemId: Long, viewModel: AcademicViewModel) {
                         )
                     }
                 }
-            }
-            if (ranges.size > 6) {
-                Text(
-                    text = "+${ranges.size - 6} more",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.align(Alignment.CenterVertically)
-                )
             }
         }
     }
@@ -1303,7 +1673,7 @@ fun CreateCustomScaleDialog(
                     .fillMaxSize()
             ) {
                 Text(
-                    text = if (initialSystem != null) "Edit Custom Scale" else "Create Custom Scale",
+                    text = if (initialSystem != null) "Edit Grading Scale" else "Create Custom Scale",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 12.dp)
@@ -1509,6 +1879,7 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
@@ -1709,7 +2080,7 @@ fun PrivacyPolicyScreen() {
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "v1.0.0",
+                    text = "v2.00",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.primary
                 )

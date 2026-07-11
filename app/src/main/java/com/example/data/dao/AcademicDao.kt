@@ -63,8 +63,20 @@ interface AcademicDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSemester(semester: Semester): Long
 
+    @Update
+    suspend fun updateSemester(semester: Semester)
+
     @Delete
     suspend fun deleteSemester(semester: Semester)
+
+    @Query("DELETE FROM courses WHERE semesterId = :semesterId")
+    suspend fun deleteCoursesBySemesterId(semesterId: Long)
+
+    @Transaction
+    suspend fun deleteSemesterAndCourses(semester: Semester) {
+        deleteCoursesBySemesterId(semester.id)
+        deleteSemester(semester)
+    }
 
     // Courses
     @Query("SELECT * FROM courses WHERE semesterId = :semesterId")
