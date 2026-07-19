@@ -1,6 +1,6 @@
 # CGPA Calculator
 
-A simple Android application to calculate CGPA.
+A simple Android Application to calculate CGPA.
 
 ## Features
 
